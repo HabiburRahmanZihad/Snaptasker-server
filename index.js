@@ -132,9 +132,9 @@ async function run() {
             // Set the token as a cookie
             res.cookie('token', token, {
                 httpOnly: true, // Prevents client-side JavaScript from accessing the cookie
-                secure: false, // Use secure cookies in production
-                // secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
-                sameSite: 'Lax', // Helps prevent CSRF attacks
+                // secure: false, // Use secure cookies in production
+                secure: process.env.NODE_ENV === 'production', // Required for Vercel (HTTPS)
+                sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'lax', // 'none' for cross-site cookies
                 maxAge: 24 * 60 * 60 * 1000 // 1 day in milliseconds
             });
             res.send({ success: true });
