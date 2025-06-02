@@ -14,10 +14,22 @@ const cookieParser = require('cookie-parser') // Import the cookie-parser packag
 
 // Middleware to handle CORS and JSON parsing
 
+const allowedOrigins = [
+    'http://localhost:5173',              // Local frontend dev
+    'https://snap-tasker.vercel.app'      // Deployed frontend
+];
+
 app.use(cors({
-    origin: ['http://localhost:5173'],
-    credentials: true, // Allow credentials (cookies, authorization headers, etc.)
-})) // Enable CORS for all routes
+    origin: (origin, callback) => {
+        if (!origin || allowedOrigins.includes(origin)) {
+            callback(null, true);
+        } else {
+            callback(new Error('Not allowed by CORS'));
+        }
+    },
+    credentials: true
+}));
+
 
 app.use(express.json()) // Parse JSON bodies
 
@@ -44,7 +56,7 @@ const verifyJWT = (req, res, next) => {
             return res.status(403).send({ message: 'Forbidden access' });
         }
         req.user = decoded; // Attach the decoded user information to the request object
-        console.log(decoded);
+        (decoded);
         next(); // Call the next middleware or route handler
     });
 }
