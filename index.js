@@ -4,19 +4,70 @@ const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const app = express()
 const port = process.env.PORT || 3000
 const cors = require('cors') // Import the cors package for allowing cross-origin requests
+const jwt = require('jsonwebtoken') // Import the jsonwebtoken package for token handling
+const cookieParser = require('cookie-parser') // Import the cookie-parser package for parsing cookies
 
-app.use(cors()) // Enable CORS for all routes
+
+
+
+
+
+// Middleware to handle CORS and JSON parsing
+
+app.use(cors({
+    origin: ['http://localhost:5173'],
+    credentials: true, // Allow credentials (cookies, authorization headers, etc.)
+})) // Enable CORS for all routes
+
 app.use(express.json()) // Parse JSON bodies
+
+app.use(cookieParser()) // Middleware to parse cookies
+
+
+// Middleware to verify JWT tokens
+// This middleware checks if the JWT token is valid and attaches the user information to the request object
+const verifyJWT = (req, res, next) => {
+
+    const token = req.cookies.token; // Get the token from cookies
+
+    if (!token) {
+        console.warn('No token in cookies');
+        return res.status(401).send({ message: 'Unauthorized access' });
+    }
+
+    console.log('Cookies:', req.cookies);
+
+
+    jwt.verify(token, process.env.JWT_ACCESS_TOKEN_SECRET, (err, decoded) => {
+
+        if (err) {
+            return res.status(403).send({ message: 'Forbidden access' });
+        }
+        req.user = decoded; // Attach the decoded user information to the request object
+        console.log(decoded);
+        next(); // Call the next middleware or route handler
+    });
+}
+
+
+
 
 app.get('/', (req, res) => {
     res.send('Wow !!! Server is Successfully running')
 })
 
+
+
+
+
+
+
 // MongoDB connection URI
-const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@xihads-xone.ftg87hg.mongodb.net/?retryWrites=true&w=majority&appName=Xihads-Xone`;
+// const uri = `mongodb+srv://${process.env.DB_USER}:${process.env.DB_PASS}@xihads-xone.ftg87hg.mongodb.net/?retryWrites=true&w=majority&appName=Xihads-Xone`;
 
 // Create a MongoClient with a MongoClientOptions object to set the Stable API version
-const client = new MongoClient(uri, {
+// const client = new MongoClient(uri, {
+const client = new MongoClient(process.env.DB_URI, {
     serverApi: {
         version: ServerApiVersion.v1,
         strict: true,
@@ -24,16 +75,76 @@ const client = new MongoClient(uri, {
     }
 });
 
+
+
+
+
 async function run() {
     try {
         // Connect the client to the server	(optional startPing in v4.7)
         // await client.connect();
 
-        const taskCollection = client.db("snapTaskerDb").collection("task"); // Make sure to use the correct database and collection names
+
+
 
         // Create a new MongoDB collection for bids
         const bidCollection = client.db("snapTaskerDb").collection("bids");
 
+        // Create a new MongoDB collection for tasks
+        const taskCollection = client.db("snapTaskerDb").collection("task"); // Make sure to use the correct database and collection names
+
+        // Create a new MongoDB collection for applications
+        const applicationsCollections = client.db("snapTaskerDb").collection("applications"); // Make sure to use the correct database and collection names
+
+
+
+
+
+
+
+
+
+
+        //**************jwtCollection Api************************
+
+        // POST - Generate a JWT token
+        app.post('/jwt', (req, res) => {
+            const { email } = req.body;
+            const user = { email };
+            const token = jwt.sign(user, process.env.JWT_ACCESS_TOKEN_SECRET, { expiresIn: '1d' });
+
+
+            // const token = jwt.sign(user, 'secret', { expiresIn: '1h' });
+            // res.send({ token });
+
+            // Set the token as a cookie
+            res.cookie('token', token, {
+                httpOnly: true, // Prevents client-side JavaScript from accessing the cookie
+                secure: false, // Use secure cookies in production
+                // secure: process.env.NODE_ENV === 'production', // Use secure cookies in production
+                sameSite: 'Lax', // Helps prevent CSRF attacks
+                maxAge: 24 * 60 * 60 * 1000 // 1 day in milliseconds
+            });
+            res.send({ success: true });
+            // res.send({ success: true, token });
+        });
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+        //**************bidCollection Api************************
         // POST - Create a new bid
         app.post('/bids', async (req, res) => {
             try {
@@ -151,20 +262,12 @@ async function run() {
             }
         });
 
+
+
+
+
+
         //**************taskCollection Api************************
-        // method - (post/Create)
-        app.post('/task', async (req, res) => {
-            const newTask = req.body;
-
-            // Convert deadline string to Date object
-            if (newTask.deadline) {
-                newTask.deadline = new Date(newTask.deadline);
-            }
-            console.log(newTask);
-
-            const result = await taskCollection.insertOne(newTask);
-            res.send(result);
-        });
 
         app.get('/recentTasks', async (req, res) => {
             try {
@@ -180,11 +283,17 @@ async function run() {
             }
         });
 
-        // method - (get all)
+        // method: GET /task - Get all tasks (optionally filtered by email using query parameter)
         app.get('/task', async (req, res) => {
             // const cursor = taskCollection.find();
             // const result = await cursor.toArray();
-            const result = await taskCollection.find().toArray();
+            const email = req.query.email;
+            const query = {};
+
+            if (email) {
+                query.email = email;
+            }
+            const result = await taskCollection.find(query).toArray();
             res.send(result);
         });
 
@@ -192,7 +301,21 @@ async function run() {
         app.get('/task/:id', async (req, res) => {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) };
+
             const result = await taskCollection.findOne(query);
+            res.send(result);
+        });
+
+        // method - (post/Create)
+        app.post('/task', verifyJWT, async (req, res) => {
+            const newTask = req.body;
+
+            // Convert deadline string to Date object
+            if (newTask.deadline) {
+                newTask.deadline = new Date(newTask.deadline);
+            }
+
+            const result = await taskCollection.insertOne(newTask);
             res.send(result);
         });
 
@@ -216,6 +339,61 @@ async function run() {
             const result = await taskCollection.updateOne(filter, updateDoc, options);
             res.send(result);
         });
+
+
+
+
+
+        //**************applicationsCollections Api************************
+
+        // method: GET /applications - Get all applications for a specific user (filtered by applicantEmail via query)
+        app.get('/applications', verifyJWT, async (req, res) => {
+            const { email, taskId } = req.query;
+
+            // verify that the user email matches the token
+            if (req.user.email !== email) {
+                return res.status(403).send({ message: 'Forbidden access' });
+            }
+
+            console.log("Decoded token email:", req.user.email);
+            console.log("Query email:", req.query.email);
+
+
+            const query = {};
+            if (email) query.applicantEmail = email;
+            if (taskId) query.taskId = taskId;
+
+            // console.log(req.cookies.token);
+            // console.log(req.cookies);
+
+            const result = await applicationsCollections.find(query).toArray();
+            res.send(result);
+        });
+
+        // method - (get all application for a specific task)
+        app.get('/applications/task/:taskId', async (req, res) => {
+            const taskId = req.params.taskId;
+            const query = { taskId: taskId };
+            const result = await applicationsCollections.find(query).toArray();
+            res.send(result);
+        });
+
+        // method - (post/Create)
+        app.post('/applications', async (req, res) => {
+            const application = req.body;
+            const result = await applicationsCollections.insertOne(application);
+            res.send(result);
+        });
+
+        // method - (delete)
+        app.delete('/applications/:id', async (req, res) => {
+            const id = req.params.id;
+            const query = { _id: new ObjectId(id) };
+            const result = await applicationsCollections.deleteOne(query);
+            res.send(result);
+        });
+
+
 
         // Send a ping to confirm a successful connection
         // await client.db("admin").command({ ping: 1 });
