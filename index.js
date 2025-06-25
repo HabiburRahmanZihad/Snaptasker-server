@@ -16,7 +16,8 @@ const cookieParser = require('cookie-parser') // Import the cookie-parser packag
 
 const allowedOrigins = [
     'http://localhost:5173',              // Local frontend dev
-    'https://snap-tasker-server.vercel.app'      // Deployed frontend
+    'https://snap-tasker-server.vercel.app',      // Deployed frontend
+    'https://snaptask-web.web.app', // Firebase hosting frontend
 ];
 
 app.use(cors({
