@@ -295,16 +295,24 @@ async function run() {
 
         // method: GET /task - Get all tasks (optionally filtered by email using query parameter)
         app.get('/task', async (req, res) => {
-            // const cursor = taskCollection.find();
-            // const result = await cursor.toArray();
             const email = req.query.email;
             const query = {};
 
             if (email) {
                 query.email = email;
             }
-            const result = await taskCollection.find(query).toArray();
-            res.send(result);
+
+            const tasks = await taskCollection.find(query).toArray();
+
+            // Format deadline to "YYYY-MM-DD"
+            const formattedTasks = tasks.map(task => {
+                if (task.deadline && task.deadline instanceof Date) {
+                    task.deadline = task.deadline.toISOString().split('T')[0]; // e.g., "2025-03-05"
+                }
+                return task;
+            });
+
+            res.send(formattedTasks);
         });
 
         // method - (read just one task)
@@ -312,8 +320,22 @@ async function run() {
             const id = req.params.id;
             const query = { _id: new ObjectId(id) };
 
-            const result = await taskCollection.findOne(query);
-            res.send(result);
+            const task = await taskCollection.findOne(query);
+
+            if (!task) {
+                return res.status(404).send({ message: 'Task not found' });
+            }
+
+            // Format deadline to 'YYYY-MM-DD' if deadline exists
+            if (task.deadline instanceof Date) {
+                task.deadline = task.deadline.toISOString().substring(0, 10);
+            } else if (task.deadline && task.deadline.$date) {
+                // If deadline stored in MongoDB extended JSON format
+                const timestamp = parseInt(task.deadline.$date.$numberLong);
+                task.deadline = new Date(timestamp).toISOString().substring(0, 10);
+            }
+
+            res.send(task);
         });
 
         // method - (post/Create)
