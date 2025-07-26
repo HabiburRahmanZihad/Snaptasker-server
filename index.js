@@ -281,12 +281,45 @@ async function run() {
 
         app.get('/recentTasks', async (req, res) => {
             try {
-                const result = await taskCollection
-                    .find()
-                    .sort({ deadline: 1 }) // Sort by most recent deadlines
-                    .limit(6)
-                    .toArray();
-                res.send(result);
+                // Step 1: Fetch all tasks
+                const tasks = await taskCollection.find().toArray();
+
+                // Step 2: Normalize and convert all deadlines to JS Date
+                const normalizedTasks = tasks.map(task => {
+                    let deadlineDate;
+
+                    if (task.deadline instanceof Date) {
+                        deadlineDate = task.deadline;
+                    } else if (task.deadline?.$date?.$numberLong) {
+                        deadlineDate = new Date(parseInt(task.deadline.$date.$numberLong));
+                    } else {
+                        deadlineDate = null;
+                    }
+
+                    return {
+                        ...task,
+                        deadline: deadlineDate,
+                        formattedDeadline: deadlineDate
+                            ? deadlineDate.toISOString().split('T')[0]
+                            : null
+                    };
+                });
+
+                // Step 3: Sort by deadline ascending (soonest first)
+                const sortedTasks = normalizedTasks
+                    .filter(task => task.deadline !== null) // only valid dates
+                    .sort((a, b) => a.deadline - b.deadline) // ascending order
+                    .slice(0, 6); // limit to 6
+
+                // Step 4: Remove raw Date object, keep only formattedDeadline
+                const cleanedTasks = sortedTasks.map(task => {
+                    return {
+                        ...task,
+                        deadline: task.formattedDeadline
+                    };
+                });
+
+                res.send(cleanedTasks);
             } catch (err) {
                 console.error('Error fetching recent tasks:', err);
                 res.status(500).send({ error: 'Internal server error' });
